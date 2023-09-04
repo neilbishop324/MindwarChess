@@ -1,4 +1,4 @@
-package com.neilb.mindwarchess
+package com.neilb.mindwarchess.view
 
 import android.annotation.SuppressLint
 import android.os.Bundle
@@ -7,9 +7,13 @@ import android.view.View
 import android.view.View.OnClickListener
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.neilb.mindwarchess.R
+import com.neilb.mindwarchess.adapter.KillPieceAdapter
 import com.neilb.mindwarchess.adapter.MoveAdapter
 import com.neilb.mindwarchess.databinding.ActivityMainBinding
-import com.neilb.mindwarchess.game.Game
+import com.neilb.mindwarchess.viewmodel.GameViewModel
+import com.neilb.mindwarchess.viewmodel.GameViewModel.Companion.calculatePoint
+import com.neilb.mindwarchess.viewmodel.GameViewModel.Companion.getKillPieces
 import com.neilb.mindwarchess.game.PositionList
 import com.neilb.mindwarchess.interfaces.PromotionCallback
 import com.neilb.mindwarchess.model.Ability
@@ -33,22 +37,29 @@ import com.neilb.mindwarchess.model.PieceInPosition.Companion.rook
 import com.neilb.mindwarchess.model.PossibleMove
 import com.neilb.mindwarchess.ui.ChessView
 import com.neilb.mindwarchess.ui.ChessView.Companion.enemyType
-import com.neilb.mindwarchess.unit.compareArrayLists
-import com.neilb.mindwarchess.unit.showAlertDialog
-import com.neilb.mindwarchess.unit.toInt
-import com.neilb.mindwarchess.unit.tryCatchAndLog
+import com.neilb.mindwarchess.util.compareArrayLists
+import com.neilb.mindwarchess.util.showAlertDialog
+import com.neilb.mindwarchess.util.toInt
+import com.neilb.mindwarchess.util.tryCatchAndLog
 import kotlinx.coroutines.*
 import java.util.UUID
 import kotlin.math.absoluteValue
+import androidx.activity.viewModels
+import com.neilb.mindwarchess.util.asBoolean
 
 class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var game: Game
+
+    private val gameViewModel: GameViewModel by viewModels()
+
     private lateinit var moves: ArrayList<Move>
     private lateinit var doubleMoves: ArrayList<Pair<Move, Move?>>
     private lateinit var moveAdapter: MoveAdapter
     private var lastPromoteData: Triple<Pair<Int, Int>, PieceInPosition?, String>? = null
+
+    private lateinit var blackKillPieceAdapter: KillPieceAdapter
+    private lateinit var whiteKillPieceAdapter: KillPieceAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,13 +70,22 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun init() {
-        game = Game()
+
         moves = arrayListOf()
         doubleMoves = arrayListOf()
         moveAdapter = MoveAdapter(doubleMoves)
         binding.movesList.layoutManager =
             LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         binding.movesList.adapter = moveAdapter
+
+        blackKillPieceAdapter = KillPieceAdapter()
+        binding.blackKillPieces.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        binding.blackKillPieces.adapter = blackKillPieceAdapter
+
+        whiteKillPieceAdapter = KillPieceAdapter()
+        binding.whiteKillPieces.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        binding.whiteKillPieces.adapter = whiteKillPieceAdapter
+
         setClickListeners()
         binding.chessView.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
@@ -94,16 +114,16 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
         val positionStatus = binding.chessView.positionList[y][x].status
         val colorTypeList = binding.chessView.colorTypeList
         when {
-            (game.whiteTurn && positionStatus == isWhite)
-                    || (!game.whiteTurn && positionStatus == isBlack) -> clickEventToOwnPiece(x, y)
-            game.inTarget && (positionStatus == PieceInPosition.isBlank) -> {
+            (gameViewModel.whiteTurn.asBoolean() && positionStatus == isWhite)
+                    || (!gameViewModel.whiteTurn.asBoolean() && positionStatus == isBlack) -> clickEventToOwnPiece(x, y)
+            gameViewModel.inTarget.asBoolean() && (positionStatus == PieceInPosition.isBlank) -> {
                 //losing focus on targeting
                 binding.chessView.clearColorList()
-                game.inTarget = false
-                game.targetPosition = null
+                gameViewModel.setInTarget(false)
+                gameViewModel.setTargetPosition(null)
             }
-            game.inTarget && positionStatus == PieceInPosition.isTarget -> movePiece(x, y)
-            game.inTarget && colorTypeList[y][x] == enemyType -> movePiece(
+            gameViewModel.inTarget.asBoolean() && positionStatus == PieceInPosition.isTarget -> movePiece(x, y)
+            gameViewModel.inTarget.asBoolean() && colorTypeList[y][x] == enemyType -> movePiece(
                 x,
                 y,
                 binding.chessView.positionList[y][x]
@@ -114,31 +134,31 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
     private fun clickEventToOwnPiece(x: Int, y: Int) {
         binding.chessView.clearColorList()
 
-        //clicking same piece
-        if (game.targetPosition == Pair(y, x)) {
-            game.inTarget = false
-            game.targetPosition = null
-            return
+        val clickedSamePiece = gameViewModel.targetPosition.value == y to x
+
+        if (clickedSamePiece ||
+            //castle with clicking rook or king
+            castleFromPieceClick(x, y)) {
+            gameViewModel.setInTarget(false)
+            gameViewModel.setTargetPosition(null)
+
+            if (clickedSamePiece) {
+                return
+            }
         }
 
-        //castle with clicking rook or king
-        if (castleFromPieceClick(x, y)) {
-            game.inTarget = false
-            game.targetPosition = null
-            return
-        }
-
-        game.inTarget = true
-        game.targetPosition = Pair(y, x)
+        gameViewModel.setInTarget(true)
+        gameViewModel.setTargetPosition(Pair(y, x))
         binding.chessView.changeColorType(ChessView.selectedType, x, y)
+
         var possibleMoves =
-            getPossibleMoves(game.whiteTurn, binding.chessView.positionList, Pair(y, x), binding.chessView.positionList[y][x])
+            getPossibleMoves(gameViewModel.whiteTurn.asBoolean(), binding.chessView.positionList, Pair(y, x), binding.chessView.positionList[y][x])
         possibleMoves = filterPossibleMoves(possibleMoves)
         showPossibleMoves(possibleMoves)
     }
 
     private fun filterPossibleMoves(possibleMoves: ArrayList<PossibleMove>, targetPosition: Pair<Int, Int>? = null): ArrayList<PossibleMove> {
-        val targetPos = targetPosition ?: game.targetPosition
+        val targetPos = targetPosition ?: gameViewModel.targetPosition.value
         val trashMoves = arrayListOf<PossibleMove>()
         for (possibleMove in possibleMoves) {
             val targetPieceInPosition =
@@ -147,7 +167,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
                 if (targetPieceInPosition.status == PieceInPosition.isBlank) null else targetPieceInPosition
             val type = getTypeOfMove(possibleMove.x, possibleMove.y, killPiece == null, targetPosition)
             val enemyPieceYCoordinate =
-                if (game.whiteTurn) possibleMove.y + 1 else possibleMove.y - 1
+                if (gameViewModel.whiteTurn.asBoolean()) possibleMove.y + 1 else possibleMove.y - 1
 
             if (type == enPassant)
                 killPiece = binding.chessView.positionList[enemyPieceYCoordinate][possibleMove.x]
@@ -158,7 +178,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
                 targetPos!!,
                 possibleMove.y to possibleMove.x,
                 binding.chessView.positionList[targetPos.first][targetPos.second].piece!!,
-                game.whiteTurn,
+                gameViewModel.whiteTurn.asBoolean(),
                 killPiece,
                 type,
                 promotionType
@@ -175,7 +195,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
 
     private fun moveIsLegal(move: Move): Boolean {
         val positionList = getPositionListByMoves(ArrayList(moves + move))
-        val whiteTurn = !game.whiteTurn
+        val whiteTurn = !gameViewModel.whiteTurn.asBoolean()
         return !isInCheck(ArrayList(positionList.map { ArrayList(it) }), whiteTurn)
     }
 
@@ -246,14 +266,14 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
             getPromotionPiece(y, x, killPiece, id)
         } else {
             val piece =
-                binding.chessView.positionList[game.targetPosition!!.first][game.targetPosition!!.second].piece!!
+                binding.chessView.positionList[gameViewModel.targetPosition.value!!.first][gameViewModel.targetPosition.value!!.second].piece!!
             movePieceWithPromotion(
                 Move(
                     id,
-                    game.targetPosition!!,
+                    gameViewModel.targetPosition.value!!,
                     Pair(y, x),
                     piece,
-                    game.whiteTurn,
+                    gameViewModel.whiteTurn.asBoolean(),
                     killPiece,
                     type
                 )
@@ -263,14 +283,14 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
 
     @SuppressLint("NotifyDataSetChanged")
     private fun movePieceWithPromotion(move: Move) {
-        val enemyPieceYCoordinate = if (game.whiteTurn) move.to.first + 1 else move.to.first - 1
+        val enemyPieceYCoordinate = if (gameViewModel.whiteTurn.asBoolean()) move.to.first + 1 else move.to.first - 1
 
         if (move.type == enPassant)
             move.killPiece = binding.chessView.positionList[enemyPieceYCoordinate][move.to.second]
 
         moves.add(move)
 
-        if (game.whiteTurn) {
+        if (gameViewModel.whiteTurn.asBoolean()) {
             doubleMoves.add(move to null)
         } else {
             val lastMove = doubleMoves.last().first
@@ -282,17 +302,14 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
 
         val currentPiece = binding.chessView.positionList[move.from.first][move.from.second]
 
-        game.apply {
+        gameViewModel.apply {
             if (currentPiece.piece == king.id)
-                kingMoved =
-                    (whiteTurn || kingMoved.first) to if (whiteTurn) kingMoved.second else true
+                setKingMoved((whiteTurn.asBoolean() || kingMoved.value!!.first) to if (whiteTurn.asBoolean()) kingMoved.value!!.second else true)
             else if (currentPiece.piece == rook.id)
                 if (move.to.second == 0)
-                    queenSideRookMoved =
-                        (whiteTurn || kingMoved.first) to if (whiteTurn) kingMoved.second else true
+                    setQueenSideRookMoved((whiteTurn.asBoolean() || kingMoved.value!!.first) to if (whiteTurn.asBoolean()) kingMoved.value!!.second else true)
                 else if (move.to.second == 7)
-                    kingSideRookMoved =
-                        (whiteTurn || kingMoved.first) to if (whiteTurn) kingMoved.second else true
+                    setKingSideRookMoved((whiteTurn.asBoolean() || kingMoved.value!!.first) to if (whiteTurn.asBoolean()) kingMoved.value!!.second else true)
         }
 
         if (move.type == enPassant)
@@ -311,39 +328,74 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
         promoteIfNeeded(move)
 
         binding.chessView.clearColorList()
-        game.inTarget = false
-        game.targetPosition = null
-        game.whiteTurn = !game.whiteTurn
+        gameViewModel.setInTarget(false)
+        gameViewModel.setTargetPosition(null)
+        gameViewModel.setWhiteTurn(!gameViewModel.whiteTurn.asBoolean())
 
-        val isInCheck = isInCheck(binding.chessView.positionList, !game.whiteTurn)
+        val isInCheck = isInCheck(binding.chessView.positionList, !gameViewModel.whiteTurn.asBoolean())
 
-        if (game.whiteTurn)
-            game.isInCheck = isInCheck to game.isInCheck.second
+        if (gameViewModel.whiteTurn.asBoolean())
+            gameViewModel.setIsInCheck(isInCheck to gameViewModel.isInCheck.value!!.second)
         else
-            game.isInCheck = game.isInCheck.first to isInCheck
+            gameViewModel.setIsInCheck(gameViewModel.isInCheck.value!!.first to isInCheck)
+
+        changePointsAndChecks()
 
         controlEndings(isInCheck)
+    }
+
+    @SuppressLint("SetTextI18n", "NotifyDataSetChanged")
+    private fun changePointsAndChecks() {
+
+        //change points
+
+        val whiteKillPoint = calculatePoint(binding.chessView.positionList.flatten(), isWhite = true)
+        val blackKillPoint = calculatePoint(binding.chessView.positionList.flatten(), isWhite = false)
+
+        val whitePoint = whiteKillPoint - blackKillPoint
+        val blackPoint = blackKillPoint - whiteKillPoint
+
+        if (whitePoint > 0) {
+            binding.whitePoint.text = "+$whitePoint"
+            binding.whitePoint.visibility = View.VISIBLE
+        } else {
+            binding.whitePoint.visibility = View.GONE
+        }
+
+        if (blackPoint > 0) {
+            binding.blackPoint.text = "+$blackPoint"
+            binding.blackPoint.visibility = View.VISIBLE
+        } else {
+            binding.blackPoint.visibility = View.GONE
+        }
+
+        blackKillPieceAdapter.pieces = getKillPieces(moves, true).map { isWhite to it }
+        whiteKillPieceAdapter.pieces = getKillPieces(moves, false).map { isBlack to it }
+
+        blackKillPieceAdapter.notifyDataSetChanged()
+        whiteKillPieceAdapter.notifyDataSetChanged()
+
     }
 
     private fun controlEndings(isInCheck: Boolean) {
         val allPieces: ArrayList<Triple<Int, Int, PieceInPosition>> = arrayListOf()
         binding.chessView.positionList.forEachIndexed { y, pieceInPositions ->
             pieceInPositions.forEachIndexed { x, pieceInPosition ->
-                if (pieceInPosition.status == game.whiteTurn.toInt())
+                if (pieceInPosition.status == gameViewModel.whiteTurn.asBoolean().toInt())
                     allPieces.add(Triple(y, x, pieceInPosition))
             }
         }
         val allPossibleMoves = arrayListOf<PossibleMove>()
         for (piece in allPieces) {
             var possibleMoves =
-                getPossibleMoves(game.whiteTurn, binding.chessView.positionList, piece.first to piece.second, piece.third)
+                getPossibleMoves(gameViewModel.whiteTurn.asBoolean(), binding.chessView.positionList, piece.first to piece.second, piece.third)
             possibleMoves = filterPossibleMoves(possibleMoves, piece.first to piece.second)
             allPossibleMoves.addAll(possibleMoves)
         }
         var winner: String? = null
         var defeatType: String? = null
         if (isInCheck && allPossibleMoves.isEmpty()) {
-            winner = (if (game.whiteTurn) "Black" else "White") + " Wins"
+            winner = (if (gameViewModel.whiteTurn.asBoolean()) "Black" else "White") + " Wins"
             defeatType = "Checkmate"
         } else if (allPossibleMoves.isEmpty()) {
             winner = "Draw"
@@ -426,7 +478,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
                 val yPos = if (whiteTurn) 7 else 0
                 val firstX = if (move.type == queenSideCastling) 0 else 7
                 val secondX = if (move.type == queenSideCastling) 3 else 5
-                positionList[yPos][secondX] = currentPiece
+                positionList[yPos][secondX] = positionList[yPos][firstX]
                 positionList[yPos][firstX] = PieceInPosition(PieceInPosition.isBlank)
             }
             val promotePiece =
@@ -441,36 +493,44 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
 
     @SuppressLint("NotifyDataSetChanged")
     private fun playAgain() {
-        game = Game()
+        gameViewModel.playAgain()
         binding.chessView.positionList = ArrayList(PositionList.map { ArrayList(it.toMutableList()) }.toMutableList())
         moves.clear()
         doubleMoves.clear()
         moveAdapter.notifyDataSetChanged()
+        blackKillPieceAdapter.pieces = listOf()
+        whiteKillPieceAdapter.pieces = listOf()
+        blackKillPieceAdapter.notifyDataSetChanged()
+        whiteKillPieceAdapter.notifyDataSetChanged()
+        binding.whitePoint.text = ""
+        binding.whitePoint.visibility = View.GONE
+        binding.blackPoint.text = ""
+        binding.blackPoint.visibility = View.GONE
     }
 
     private fun castleFromPieceClick(x: Int, y: Int): Boolean {
-        if (!game.inTarget)
+        if (!gameViewModel.inTarget.asBoolean())
             return false
 
         val clickPiece = binding.chessView.positionList[y][x].piece!!
         val targetPiece =
-            binding.chessView.positionList[game.targetPosition!!.first][game.targetPosition!!.second].piece!!
+            binding.chessView.positionList[gameViewModel.targetPosition.value!!.first][gameViewModel.targetPosition.value!!.second].piece!!
 
         if ((clickPiece == king.id && targetPiece == rook.id) ||
             (clickPiece == rook.id && targetPiece == king.id)
         ) {
             val targetIsKing = targetPiece == king.id
-            val yCoordinate = if (game.whiteTurn) 7 else 0
+            val yCoordinate = if (gameViewModel.whiteTurn.asBoolean()) 7 else 0
             val queenSide =
-                if (targetIsKing) game.targetPosition!!.second - x > 0 else x - game.targetPosition!!.second > 0
-            if (game.castleCheck1(
+                if (targetIsKing) gameViewModel.targetPosition.value!!.second - x > 0 else x - gameViewModel.targetPosition.value!!.second > 0
+            if (gameViewModel.castleCheck1(
                     queenSide,
-                    game.whiteTurn
+                    gameViewModel.whiteTurn.asBoolean()
                 ) && binding.chessView.positionList[yCoordinate].filterIndexed { i, _ -> if (queenSide) i in 1..3 else i in 5..6 }
                     .all { it.status == PieceInPosition.isBlank }
             ) {
-                game.targetPosition = Pair(yCoordinate, 4)
-                val move = Move("", game.targetPosition!!, yCoordinate to if (queenSide) 2 else 6, binding.chessView.positionList[yCoordinate][4].piece!!, game.whiteTurn, null, if (queenSide) queenSideCastling else kingSideCastling)
+                gameViewModel.setTargetPosition(Pair(yCoordinate, 4))
+                val move = Move("", gameViewModel.targetPosition.value!!, yCoordinate to if (queenSide) 2 else 6, binding.chessView.positionList[yCoordinate][4].piece!!, gameViewModel.whiteTurn.asBoolean(), null, if (queenSide) queenSideCastling else kingSideCastling)
                 if (moveIsLegal(move)) {
                     movePiece(
                         if (queenSide) 2 else 6,
@@ -485,7 +545,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
 
     private fun promoteIfNeeded(move: Move) {
         val currentPiece =
-            PieceInPosition(if (game.whiteTurn) isWhite else isBlack, move.promotionPiece)
+            PieceInPosition(if (gameViewModel.whiteTurn.asBoolean()) isWhite else isBlack, move.promotionPiece)
         if (move.type == promotion) {
             binding.chessView.changePositionData(currentPiece, move.to.second, move.to.first)
         }
@@ -493,7 +553,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
 
     private fun getPromotionPiece(y: Int, x: Int, killPiece: PieceInPosition? = null, id: String) {
         lastPromoteData = Triple(Pair(y, x), killPiece, id)
-        if (game.whiteTurn) {
+        if (gameViewModel.whiteTurn.asBoolean()) {
             binding.whitePromotion.visibility = View.VISIBLE
         } else {
             binding.blackPromotion.visibility = View.VISIBLE
@@ -502,7 +562,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
 
     private fun castleIfNeeded(y: Int, type: Int) {
         if (type in arrayOf(queenSideCastling, kingSideCastling)) {
-            val yPos = if (game.whiteTurn) 7 else 0
+            val yPos = if (gameViewModel.whiteTurn.asBoolean()) 7 else 0
             val firstX = if (type == queenSideCastling) 0 else 7
             val secondX = if (type == queenSideCastling) 3 else 5
             val currentPiece = binding.chessView.positionList[y][firstX]
@@ -516,7 +576,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
     }
 
     private fun getTypeOfMove(x: Int, y: Int, killPieceIsNull: Boolean, targetPosition: Pair<Int, Int>? = null): Int {
-        val targetPos = targetPosition ?: game.targetPosition!!
+        val targetPos = targetPosition ?: gameViewModel.targetPosition.value!!
         val currentPiece =
             binding.chessView.positionList[targetPos.first][targetPos.second].piece!!
         return if (currentPiece == king.id)
@@ -526,7 +586,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
                 queenSideCastling
             else normal
         else if (currentPiece == pawn.id)
-            if ((game.whiteTurn && y == 0) || (!game.whiteTurn && y == 7))
+            if ((gameViewModel.whiteTurn.asBoolean() && y == 0) || (!gameViewModel.whiteTurn.asBoolean() && y == 7))
                 promotion
             else if (killPieceIsNull && targetPos.second != x)
                 enPassant
@@ -575,7 +635,7 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
     ) {
         arrayOf(true, false).forEach { queenSide ->
             if (pieceInPosition.piece == king.id &&
-                game.castleCheck1(queenSide, isWhiteTurn)
+                gameViewModel.castleCheck1(queenSide, isWhiteTurn)
             ) {
                 val newLimitedPairs: ArrayList<Triple<Int, Int, Boolean>> = arrayListOf()
                 for (pair in ability.limitedPairs!!) {
@@ -739,10 +799,10 @@ class MainActivity : AppCompatActivity(), PromotionCallback, OnClickListener {
             this.promote(
                 Move(
                     lastPromoteData!!.third,
-                    game.targetPosition!!,
+                    gameViewModel.targetPosition.value!!,
                     lastPromoteData!!.first.first to lastPromoteData!!.first.second,
                     pawn.id,
-                    game.whiteTurn,
+                    gameViewModel.whiteTurn.asBoolean(),
                     lastPromoteData!!.second,
                     promotion,
                     it

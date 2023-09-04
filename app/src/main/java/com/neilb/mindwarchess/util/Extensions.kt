@@ -1,31 +1,19 @@
-package com.neilb.mindwarchess.unit
+package com.neilb.mindwarchess.util
 
-import android.app.Activity
 import android.content.Context
-import android.util.Log
-import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import com.neilb.mindwarchess.model.Piece
+import androidx.lifecycle.LiveData
 import com.neilb.mindwarchess.model.PieceInPosition
-
-fun Context.showToast(msg: String?) {
-    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-}
 
 fun Boolean.toInt() = if (this) 1 else 0
 
-fun Activity.tryCatchAndLog(function: () -> Unit) {
+fun tryCatchAndLog(function: () -> Unit) {
     try {
         function()
     } catch (e: java.lang.Exception) {
-        //Log.e(this.localClassName, e.message.toString())
-        println("-------------------------------------------")
         e.printStackTrace()
-        println("-------------------------------------------")
     }
 }
-
-fun Int.toBoolean() = this % 2 != 0
 
 fun Context.showAlertDialog(
     title: String,
@@ -64,3 +52,5 @@ fun compareArrayLists(arrayList1: ArrayList<PieceInPosition>, arrayList2: ArrayL
 
     return true
 }
+
+fun LiveData<Boolean>.asBoolean(): Boolean = this.value == true

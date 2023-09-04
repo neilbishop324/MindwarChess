@@ -5,20 +5,16 @@ plugins {
 
 android {
     namespace 'com.neilb.mindwarchess'
-    compileSdk 33
+    compileSdk 34
 
     buildFeatures {
         viewBinding = true
     }
 
-    dataBinding {
-        enabled = true
-    }
-
     defaultConfig {
         applicationId "com.neilb.mindwarchess"
         minSdk 21
-        targetSdk 33
+        targetSdk 34
         versionCode 1
         versionName "1.0"
 
@@ -50,6 +46,8 @@ dependencies {
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.2")
+
+    implementation "androidx.activity:activity-ktx:1.7.2"
 
 }

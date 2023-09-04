@@ -4,7 +4,31 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".MainActivity">
+    tools:context=".view.MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/black_point"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_margin="15dp"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/black_kill_pieces"
+            android:layout_marginVertical="15dp"
+            android:layout_marginStart="15dp" />
+
+    </LinearLayout>
 
     <androidx.cardview.widget.CardView
         android:id="@+id/white_promotion"
@@ -30,7 +54,7 @@
                 android:id="@+id/w_queen"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@drawable/white_queen"
+                android:src="@drawable/t1_w_q"
                 android:layout_margin="6dp"
                 android:contentDescription="@null" />
 
@@ -38,7 +62,7 @@
                 android:id="@+id/w_rook"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@drawable/white_rook"
+                android:src="@drawable/t1_w_r"
                 android:layout_margin="6dp"
                 android:contentDescription="@null"/>
 
@@ -46,7 +70,7 @@
                 android:id="@+id/w_knight"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@drawable/white_knight"
+                android:src="@drawable/t1_w_k"
                 android:layout_margin="6dp"
                 android:contentDescription="@null"/>
 
@@ -54,7 +78,7 @@
                 android:id="@+id/w_bishop"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@drawable/white_bishop"
+                android:src="@drawable/t1_w_b"
                 android:layout_margin="6dp"
                 android:contentDescription="@null"/>
 
@@ -97,7 +121,7 @@
                 android:id="@+id/b_queen"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@drawable/black_queen"
+                android:src="@drawable/t1_b_q"
                 android:layout_margin="6dp"
                 android:contentDescription="@null" />
 
@@ -105,7 +129,7 @@
                 android:id="@+id/b_rook"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@drawable/black_rook"
+                android:src="@drawable/t1_b_r"
                 android:layout_margin="6dp"
                 android:contentDescription="@null"/>
 
@@ -113,7 +137,7 @@
                 android:id="@+id/b_knight"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@drawable/black_knight"
+                android:src="@drawable/t1_b_k"
                 android:layout_margin="6dp"
                 android:contentDescription="@null"/>
 
@@ -121,13 +145,37 @@
                 android:id="@+id/b_bishop"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@drawable/black_bishop"
+                android:src="@drawable/t1_b_b"
                 android:layout_margin="6dp"
                 android:contentDescription="@null"/>
 
         </LinearLayout>
 
     </androidx.cardview.widget.CardView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/moves_list"
+        android:gravity="center_vertical" >
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/white_point"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_margin="15dp"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/white_kill_pieces"
+            android:layout_marginVertical="15dp"
+            android:layout_marginStart="15dp"/>
+
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/moves_list"
